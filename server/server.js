@@ -34,6 +34,7 @@ require('./config/passport');
 const passport = require('passport');
 
 const app = express();
+app.set("trust proxy", 1);
 const httpServer = http.createServer(app);
 
 // Socket.io setup

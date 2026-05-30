@@ -9,7 +9,7 @@ import ProfilePage from "./pages/ProfilePage";
 import HomePage from "./pages/HomePage";
 import { useAuth } from "./context/AuthContext";
 import "./index.css";
-import "./app.css";
+import "./App.css";
 
 const App = () => {
   return (
