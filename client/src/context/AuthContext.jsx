@@ -7,6 +7,7 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const fetchMe = async () => {
@@ -30,16 +31,20 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      setLoggingOut(true);
       await api.post("/auth/logout");
     } catch {
     } finally {
       disconnectSocket();
       setUser(null);
+      setLoading(false);
+      setLoggingOut(false);
+      window.location.replace("/");
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, loggingOut, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

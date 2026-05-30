@@ -71,7 +71,6 @@ const DashboardPage = () => {
   const handleLogout = async () => {
     setShowMobileMenu(false);
     await logout();
-    navigate("/login");
   };
 
   return (

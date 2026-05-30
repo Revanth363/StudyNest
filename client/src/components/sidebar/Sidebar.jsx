@@ -90,7 +90,6 @@ const Sidebar = ({ activeView, setActiveView, onCreateRoom, activeRoomId }) => {
 
   const handleLogout = async () => {
     await logout();
-    navigate("/login");
   };
 
   const handleNavClick = (itemId) => {
