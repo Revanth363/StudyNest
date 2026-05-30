@@ -1,6 +1,6 @@
 # StudyNest
 
-StudyNest is a real-time study room app.
+StudyNest is a full-stack real-time study collaboration platform designed for students preparing for GATE, placements, technical interviews, and competitive programming.
 You can create rooms, join topic-based rooms, chat, share files, pin messages, save messages, and get notifications.
 
 
