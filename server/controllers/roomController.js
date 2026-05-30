@@ -253,7 +253,7 @@ const leaveRoom = async (req, res, next) => {
   }
 };
 
-// @desc    Delete a room (admin only)
+// @desc    Delete a room (creator only)
 // @route   DELETE /api/rooms/:id
 // @access  Private
 const deleteRoom = async (req, res, next) => {

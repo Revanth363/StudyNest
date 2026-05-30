@@ -5,12 +5,15 @@ import Avatar from "../shared/Avatar";
 import "./MyRooms.css";
 import { getLogoForTopic } from "../../utils/topicLogos";
 import { useRooms } from "../../context/RoomsContext";
+import { useAuth } from "../../context/AuthContext";
 
 const MyRooms = () => {
   const [rooms, setRooms] = useState([]);
   const [favoriteRoomIds, setFavoriteRoomIds] = useState([]);
   const { fetchMyRooms, pagesCache, invalidateRoomsCache, favoriteRoomIds: ctxFavoriteIds, toggleFavorite } = useRooms();
+  const { user } = useAuth();
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [roomSearch, setRoomSearch] = useState("");
   const [togglingFavoriteId, setTogglingFavoriteId] = useState("");
   const [loading, setLoading] = useState(true);
   const [joiningPrivate, setJoiningPrivate] = useState(false);
@@ -100,9 +103,17 @@ const MyRooms = () => {
     }
   };
 
-  const filteredRooms = showFavoritesOnly
-    ? rooms.filter((room) => favoriteRoomIds.includes(room._id))
-    : rooms;
+  const filteredRooms = rooms.filter((room) => {
+    const matchesFavorites = !showFavoritesOnly || favoriteRoomIds.includes(room._id);
+    const searchTerm = roomSearch.trim().toLowerCase();
+    const matchesSearch =
+      !searchTerm ||
+      [room.name, room.topic, room.description]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(searchTerm));
+
+    return matchesFavorites && matchesSearch;
+  });
 
   return (
     <div className="my-rooms">
@@ -110,14 +121,36 @@ const MyRooms = () => {
         <div>
           <h1 className="my-rooms-title">My Rooms</h1>
           <p className="my-rooms-sub">Rooms you have joined</p>
-          <button
-            type="button"
-            className={`favorites-filter-btn ${showFavoritesOnly ? "active" : ""}`}
-            onClick={() => setShowFavoritesOnly((prev) => !prev)}
-          >
-            <StarIcon filled={showFavoritesOnly} />
-            {showFavoritesOnly ? "Showing favorites" : "Show favorites"}
-          </button>
+          <div className="my-rooms-actions">
+            <button
+              type="button"
+              className={`favorites-filter-btn ${showFavoritesOnly ? "active" : ""}`}
+              onClick={() => setShowFavoritesOnly((prev) => !prev)}
+            >
+              <StarIcon filled={showFavoritesOnly} />
+              {showFavoritesOnly ? "Showing favorites" : "Show favorites"}
+            </button>
+
+            <div className="my-rooms-search">
+              <SearchIcon />
+              <input
+                type="text"
+                placeholder="Search rooms"
+                value={roomSearch}
+                onChange={(e) => setRoomSearch(e.target.value)}
+              />
+              {roomSearch && (
+                <button
+                  type="button"
+                  className="search-clear-btn"
+                  onClick={() => setRoomSearch("")}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <form className="join-private-form" onSubmit={handleJoinPrivate}>
@@ -154,8 +187,19 @@ const MyRooms = () => {
           </div>
         ) : filteredRooms.length === 0 ? (
           <div className="my-rooms-empty">
-            <p>No favorite rooms yet</p>
-            <button onClick={() => setShowFavoritesOnly(false)}>Show all rooms</button>
+            <p>
+              {roomSearch.trim()
+                ? "No rooms match your search"
+                : "No favorite rooms yet"}
+            </p>
+            <div className="my-rooms-empty-actions">
+              {roomSearch.trim() && (
+                <button onClick={() => setRoomSearch("")}>Clear search</button>
+              )}
+              {showFavoritesOnly && (
+                <button onClick={() => setShowFavoritesOnly(false)}>Show all rooms</button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="my-rooms-grid">
@@ -165,9 +209,19 @@ const MyRooms = () => {
                 room={room}
                 onOpen={() => navigate(`/room/${room._id}`)}
                 onLeave={() => handleLeave(room._id)}
+                onDeleteRoom={async () => {
+                  try {
+                    await api.delete(`/rooms/${room._id}`);
+                    invalidateRoomsCache();
+                    const payload = await fetchMyRooms(1, 20);
+                    setRooms(payload?.rooms || []);
+                    setFavoriteRoomIds(payload?.favoriteRoomIds || []);
+                  } catch {}
+                }}
                 isFavorite={favoriteRoomIds.includes(room._id)}
                 onToggleFavorite={() => handleToggleFavorite(room._id)}
                 isTogglingFavorite={togglingFavoriteId === room._id}
+                isCreator={(room.createdBy?._id || room.createdBy)?.toString() === user?._id?.toString()}
               />
             ))}
           </div>
@@ -177,7 +231,7 @@ const MyRooms = () => {
   );
 };
 
-const MyRoomCard = ({ room, onOpen, onLeave, isFavorite, onToggleFavorite, isTogglingFavorite }) => {
+const MyRoomCard = ({ room, onOpen, onLeave, onDeleteRoom, isFavorite, onToggleFavorite, isTogglingFavorite, isCreator }) => {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
@@ -206,15 +260,20 @@ const MyRoomCard = ({ room, onOpen, onLeave, isFavorite, onToggleFavorite, isTog
         </button>
         {showMenu && (
           <div className="my-room-menu">
-            <button onClick={() => { onOpen(); setShowMenu(false); }}>
-              Open Room
-            </button>
             <button
               className="leave-btn"
               onClick={() => { onLeave(); setShowMenu(false); }}
             >
               Leave Room
             </button>
+            {isCreator && (
+              <button
+                className="delete-btn"
+                onClick={() => { onDeleteRoom(); setShowMenu(false); }}
+              >
+                Delete Room
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -258,6 +317,12 @@ const MyRoomCard = ({ room, onOpen, onLeave, isFavorite, onToggleFavorite, isTog
 const DotsIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
   </svg>
 );
 

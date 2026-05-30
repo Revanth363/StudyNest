@@ -233,7 +233,7 @@ const getMyRooms = async (req, res, next) => {
 
     // Fetch room documents with minimal fields and only a preview of members (perDocumentLimit)
     const roomsFound = await Room.find({ _id: { $in: pagedRoomIds }, isActive: true })
-      .select("name topic isPrivate createdBy members description updatedAt createdAt")
+      .select("name topic isPrivate createdBy admins members description updatedAt createdAt")
       .populate("createdBy", "username avatar")
       .populate({ path: "members", select: "username avatar", perDocumentLimit: 3 })
       .lean();
