@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { useRooms } from "../../context/RoomsContext";
 import "./ExploreRooms.css";
 import { getLogoForTopic } from "../../utils/topicLogos";
 
@@ -9,25 +10,37 @@ const TOPICS = ["All", "DBMS", "DSA", "Operating Systems", "Computer Networks", 
 const ExploreRooms = ({ onCreateRoom }) => {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [total, setTotal] = useState(0);
   const [activeTopic, setActiveTopic] = useState("All");
   const [search, setSearch] = useState("");
   const [joining, setJoining] = useState(null);
   const navigate = useNavigate();
+  const { invalidateRoomsCache } = useRooms();
 
   useEffect(() => {
-    fetchRooms();
+    setPage(1);
+    fetchRooms(1);
   }, [activeTopic, search]);
 
-  const fetchRooms = async () => {
+  const fetchRooms = async (pageToFetch = 1) => {
     try {
-      setLoading(true);
-      const params = {};
+      if (pageToFetch === 1) setLoading(true);
+      const params = { page: pageToFetch, limit };
       if (activeTopic !== "All") params.topic = activeTopic;
       if (search) params.search = search;
       const res = await api.get("/rooms", { params });
-      setRooms(res.data.rooms);
+      const payload = res.data || {};
+      if (pageToFetch === 1) {
+        setRooms(payload.rooms || []);
+      } else {
+        setRooms((prev) => [...prev, ...(payload.rooms || [])]);
+      }
+      setTotal(payload.total || 0);
+      setPage(payload.page || pageToFetch);
     } catch {
-      setRooms([]);
+      if (pageToFetch === 1) setRooms([]);
     } finally {
       setLoading(false);
     }
@@ -37,6 +50,8 @@ const ExploreRooms = ({ onCreateRoom }) => {
     try {
       setJoining(room._id);
       await api.post(`/rooms/${room._id}/join`);
+      // Invalidate client cache so MyRooms reflects join
+      invalidateRoomsCache();
       navigate(`/room/${room._id}`);
     } catch {
     } finally {
@@ -90,8 +105,8 @@ const ExploreRooms = ({ onCreateRoom }) => {
             <button onClick={onCreateRoom}>Create one</button>
           </div>
         ) : (
-          <div className="rooms-grid">
-            {rooms.map((room) => (
+            <div className="rooms-grid">
+              {rooms.map((room) => (
               <RoomCard
                 key={room._id}
                 room={room}
@@ -100,6 +115,11 @@ const ExploreRooms = ({ onCreateRoom }) => {
                 onOpen={() => navigate(`/room/${room._id}`)}
               />
             ))}
+              {rooms.length < total && (
+                <div className="load-more-wrap">
+                  <button onClick={() => fetchRooms(page + 1)} className="load-more-btn">Load more</button>
+                </div>
+              )}
           </div>
         )}
       </div>

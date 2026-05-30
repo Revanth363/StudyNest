@@ -4,6 +4,25 @@ const Message = require("../models/Message.js");
 const { AppError } = require("../middleware/error.js");
 const { generateRoomCode } = require("../utils/generateRoomCode.js");
 const { createNotifications } = require("../utils/notification.js");
+const { getRedis } = require("../config/redis.js");
+
+const invalidateUserRoomsCache = async (userId) => {
+  try {
+    const redis = getRedis();
+    let cursor = "0";
+    do {
+      const res = await redis.scan(cursor, { MATCH: `user:${userId}:rooms*`, COUNT: 100 });
+      const nextCursor = Array.isArray(res) ? res[0] : res.cursor || "0";
+      const keys = Array.isArray(res) ? res[1] : res.keys || [];
+      cursor = nextCursor;
+      if (keys && keys.length) {
+        await Promise.all(keys.map((k) => redis.del(k)));
+      }
+    } while (cursor !== "0");
+  } catch (err) {
+    // ignore cache errors
+  }
+};
 
 // @desc    Create a room
 // @route   POST /api/rooms
@@ -35,6 +54,8 @@ const createRoom = async (req, res, next) => {
       $push: { roomsJoined: room._id },
     });
 
+    try { await invalidateUserRoomsCache(req.user._id); } catch (e) {}
+
     const populatedRoom = await Room.findById(room._id)
       .populate("createdBy", "username avatar")
       .populate("members", "username avatar")
@@ -52,7 +73,8 @@ const createRoom = async (req, res, next) => {
 const getAllRooms = async (req, res, next) => {
   try {
     const { topic, search } = req.query;
-
+    const page = parseInt(req.query.page || "1", 10);
+    const limit = Math.min(parseInt(req.query.limit || "20", 10), 100);
     let filter = { isPrivate: false, isActive: true };
 
     if (topic) filter.topic = topic;
@@ -61,11 +83,18 @@ const getAllRooms = async (req, res, next) => {
       filter.name = { $regex: search, $options: "i" };
     }
 
+    const skip = (page - 1) * limit;
+
     const rooms = await Room.find(filter)
       .populate("createdBy", "username avatar")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    res.status(200).json({ success: true, rooms });
+    const total = await Room.countDocuments(filter);
+
+    res.status(200).json({ success: true, rooms, page, limit, total });
   } catch (error) {
     next(error);
   }
@@ -118,6 +147,8 @@ const joinRoom = async (req, res, next) => {
       $push: { roomsJoined: room._id },
     });
 
+    try { await invalidateUserRoomsCache(req.user._id); } catch (e) {}
+
     await createNotifications({
       recipientIds: room.admins.filter((adminId) => adminId.toString() !== req.user._id.toString()),
       type: "user_joined",
@@ -164,6 +195,8 @@ const joinPrivateRoom = async (req, res, next) => {
     await User.findByIdAndUpdate(req.user._id, {
       $push: { roomsJoined: room._id },
     });
+
+    try { await invalidateUserRoomsCache(req.user._id); } catch (e) {}
 
     await createNotifications({
       recipientIds: room.admins.filter((adminId) => adminId.toString() !== req.user._id.toString()),
@@ -212,6 +245,8 @@ const leaveRoom = async (req, res, next) => {
       $pull: { roomsJoined: room._id, favoriteRooms: room._id },
     });
 
+    try { await invalidateUserRoomsCache(req.user._id); } catch (e) {}
+
     res.status(200).json({ success: true, message: "Left room successfully" });
   } catch (error) {
     next(error);
@@ -234,6 +269,12 @@ const deleteRoom = async (req, res, next) => {
 
     room.isActive = false;
     await room.save();
+
+    // invalidate cache for all members (best-effort)
+    try {
+      const memberIds = room.members || [];
+      await Promise.all(memberIds.map((id) => invalidateUserRoomsCache(id)));
+    } catch (e) {}
 
     res.status(200).json({ success: true, message: "Room deleted successfully" });
   } catch (error) {
@@ -267,6 +308,8 @@ const removeUser = async (req, res, next) => {
     await User.findByIdAndUpdate(userId, {
       $pull: { roomsJoined: room._id, favoriteRooms: room._id },
     });
+
+    try { await invalidateUserRoomsCache(userId); } catch (e) {}
 
     await createNotifications({
       recipientIds: [userId],

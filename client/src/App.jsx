@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { RoomsProvider } from "./context/RoomsContext";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
@@ -15,6 +16,7 @@ const App = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <RoomsProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
@@ -76,6 +78,7 @@ const App = () => {
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </RoomsProvider>
       </AuthProvider>
     </BrowserRouter>
   );

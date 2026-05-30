@@ -101,6 +101,10 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
       setLoading(true);
       const res = await api.get(`/messages/${room._id}`);
       setMessages(res.data.messages);
+      // ensure we land on the latest message after initial load
+      setTimeout(() => {
+        try { bottomRef.current?.scrollIntoView({ behavior: "auto" }); } catch (e) {}
+      }, 40);
     } catch {
       setMessages([]);
     } finally {
@@ -855,6 +859,15 @@ const MessageInput = ({ roomId, onNewMessage }) => {
   const fileRef = useRef(null);
   const typingTimer = useRef(null);
   const { user } = useAuth();
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+
+  useEffect(() => {
+    try {
+      setIsMobileDevice(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    } catch (err) {
+      setIsMobileDevice(false);
+    }
+  }, []);
 
   const emitTypingStart = () => {
     const socket = getSocket();
@@ -954,9 +967,21 @@ const MessageInput = ({ roomId, onNewMessage }) => {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !selectedFile) {
-      e.preventDefault();
-      handleSend();
+    if (e.key === "Enter") {
+      // Allow newline with Shift+Enter
+      if (e.shiftKey) return;
+
+      // On mobile devices avoid sending on plain Enter — require explicit send button
+      if (isMobileDevice && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        return;
+      }
+
+      // Desktop: allow Ctrl/Cmd+Enter or plain Enter
+      if (!isMobileDevice || e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        handleSend();
+      }
     }
   };
 

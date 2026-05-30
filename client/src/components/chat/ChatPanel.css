@@ -512,7 +512,7 @@
   }
 
   .chat-messages {
-    padding: 14px;
+    padding: 14px 10px;
     gap: 8px;
   }
 
@@ -521,7 +521,7 @@
   }
 
   .message-bubble {
-    padding: 12px 12px 30px;
+    padding: 8px 8px 8px;
   }
 
   .message-text {
@@ -1091,22 +1091,68 @@
 
 .resources-list {
   border-top: 1px solid rgba(34, 197, 94, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .resource-item {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
   background-color: transparent;
   border: none;
-  border-bottom: 1px solid rgba(34, 197, 94, 0.18);
-  padding: 14px 0;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.08);
+  padding: 16px 0;
   border-radius: 0;
 }
 
+/* Mobile input anchoring and compact styles */
+@media (max-width: 768px) {
+  .message-input-wrapper {
+    position: sticky;
+    bottom: 0;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(0,0,0,0), var(--bg-primary));
+    z-index: 60;
+    padding-bottom: calc(env(safe-area-inset-bottom, 12px) + 8px);
+  }
+
+  .message-input-box {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .message-textarea {
+    font-size: 14px;
+    max-height: 88px;
+  }
+
+  .send-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .input-icon-btn {
+    width: 36px;
+    height: 36px;
+  }
+  /* Mobile-only: increase spacing for text resource rows only */
+  .chat-panel .resources-panel .resource-text-item {
+    gap: 22px !important;
+    padding: 20px 0 !important;
+  }
+
+  .chat-panel .resources-panel .resource-text-item + .resource-text-item {
+    border-top: 1px solid rgba(34, 197, 94, 0.06) !important;
+  }
 .resource-media-link {
   flex-shrink: 0;
   display: block;
+  
+}
+
 }
 
 .resource-image-thumb {
@@ -1156,7 +1202,7 @@
 }
 
 .resource-link-text {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-primary);
   word-break: break-word;
   white-space: pre-wrap;

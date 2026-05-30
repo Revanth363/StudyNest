@@ -52,4 +52,8 @@ const messageSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes to speed up common message queries
+messageSchema.index({ sender: 1, fileType: 1, createdAt: -1 });
+messageSchema.index({ room: 1, createdAt: -1 });
+
 module.exports = mongoose.model("Message", messageSchema);

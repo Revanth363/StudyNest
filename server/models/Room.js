@@ -35,7 +35,7 @@ const roomSchema = new mongoose.Schema(
     roomCode: {
       type: String,
       unique: true,
-      sparse: true,   // only private rooms have a code
+      sparse: true, // only private rooms have a code
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -74,5 +74,9 @@ const roomSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Indexes to improve common queries (topic, isActive, createdAt, name search)
+roomSchema.index({ isActive: 1, topic: 1, createdAt: -1 });
+roomSchema.index({ name: "text" });
 
 module.exports = mongoose.model("Room", roomSchema);

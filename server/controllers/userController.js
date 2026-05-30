@@ -3,6 +3,26 @@ const Message = require("../models/Message.js");
 const { AppError } = require("../middleware/error.js");
 const { cloudinary } = require("../config/cloudinary.js");
 const Room = require("../models/Room.js");
+const { getRedis } = require("../config/redis.js");
+
+const invalidateUserRoomsCache = async (userId) => {
+  try {
+    const redis = getRedis();
+    let cursor = "0";
+    do {
+      const res = await redis.scan(cursor, { MATCH: `user:${userId}:rooms*`, COUNT: 100 });
+      // res can be [nextCursor, keys]
+      const nextCursor = Array.isArray(res) ? res[0] : res.cursor || "0";
+      const keys = Array.isArray(res) ? res[1] : res.keys || [];
+      cursor = nextCursor;
+      if (keys && keys.length) {
+        await Promise.all(keys.map((k) => redis.del(k)));
+      }
+    } while (cursor !== "0");
+  } catch (err) {
+    // ignore
+  }
+};
 
 const buildProfileDetails = async (user) => {
   const [createdRooms, resourcesSharedCount, recentSharedResources] = await Promise.all([
@@ -188,18 +208,57 @@ const updateStudyTime = async (req, res, next) => {
 
 const getMyRooms = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).populate({
-      path: "roomsJoined",
-      populate: [
-        { path: "createdBy", select: "username avatar" },
-        { path: "members", select: "username avatar" },
-      ],
-    });
-    res.status(200).json({
-      success: true,
-      rooms: user.roomsJoined,
-      favoriteRoomIds: (user.favoriteRooms || []).map((id) => id.toString()),
-    });
+    // Support pagination (page, limit) and server-side caching in Redis
+    const page = parseInt(req.query.page || "1", 10);
+    const limit = Math.min(parseInt(req.query.limit || "20", 10), 100);
+    const cacheKey = `user:${req.user._id}:rooms:page:${page}:limit:${limit}`;
+
+    try {
+      const redis = getRedis();
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        const payload = typeof cached === "string" ? JSON.parse(cached) : cached;
+        return res.status(200).json({ success: true, ...payload });
+      }
+    } catch (err) {
+      // Redis cache miss or unavailable; continue without failing
+    }
+
+    // Load only necessary fields and limit member previews to speed up response
+    const userDoc = await User.findById(req.user._id).select("roomsJoined favoriteRooms").lean();
+    const roomIds = Array.isArray(userDoc?.roomsJoined) ? userDoc.roomsJoined : [];
+
+    const skip = (page - 1) * limit;
+    const pagedRoomIds = roomIds.slice(skip, skip + limit);
+
+    // Fetch room documents with minimal fields and only a preview of members (perDocumentLimit)
+    const roomsFound = await Room.find({ _id: { $in: pagedRoomIds }, isActive: true })
+      .select("name topic isPrivate createdBy members description updatedAt createdAt")
+      .populate("createdBy", "username avatar")
+      .populate({ path: "members", select: "username avatar", perDocumentLimit: 3 })
+      .lean();
+
+    // Preserve order from user's roomsJoined slice
+    const roomsMap = new Map(roomsFound.map((r) => [r._id.toString(), r]));
+    const orderedRooms = pagedRoomIds.map((id) => roomsMap.get(id.toString())).filter(Boolean);
+
+    const payload = {
+      rooms: orderedRooms,
+      favoriteRoomIds: (userDoc.favoriteRooms || []).map((id) => id.toString()),
+      page,
+      limit,
+      total: roomIds.length,
+    };
+
+    try {
+      const redis = getRedis();
+      // cache for short duration
+      await redis.set(cacheKey, JSON.stringify(payload), { ex: 120 });
+    } catch (err) {
+      // ignore caching errors
+    }
+
+    return res.status(200).json({ success: true, ...payload });
   } catch (error) {
     next(error);
   }
@@ -241,6 +300,13 @@ const favoriteRoom = async (req, res, next) => {
     }
 
     await user.save();
+
+    // Invalidate cached rooms for this user
+    try {
+      await invalidateUserRoomsCache(req.user._id);
+    } catch (err) {
+      // ignore
+    }
 
     res.status(200).json({
       success: true,

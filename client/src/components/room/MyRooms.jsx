@@ -4,10 +4,12 @@ import api from "../../services/api";
 import Avatar from "../shared/Avatar";
 import "./MyRooms.css";
 import { getLogoForTopic } from "../../utils/topicLogos";
+import { useRooms } from "../../context/RoomsContext";
 
 const MyRooms = () => {
   const [rooms, setRooms] = useState([]);
   const [favoriteRoomIds, setFavoriteRoomIds] = useState([]);
+  const { fetchMyRooms, pagesCache, invalidateRoomsCache, favoriteRoomIds: ctxFavoriteIds, toggleFavorite } = useRooms();
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [togglingFavoriteId, setTogglingFavoriteId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -17,22 +19,29 @@ const MyRooms = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchMyRooms();
-  }, []);
-
-  const fetchMyRooms = async () => {
-    try {
+    let mounted = true;
+    (async () => {
       setLoading(true);
-      const res = await api.get("/users/me/rooms");
-      setRooms(res.data.rooms);
-      setFavoriteRoomIds(res.data.favoriteRoomIds || []);
-    } catch {
-      setRooms([]);
-      setFavoriteRoomIds([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      try {
+        const cached = pagesCache["1:20"];
+        if (cached && cached.rooms) {
+          setRooms(cached.rooms);
+          setFavoriteRoomIds(cached.favoriteRoomIds || []);
+        } else {
+          const payload = await fetchMyRooms(1, 20);
+          if (!mounted) return;
+          setRooms(payload?.rooms || []);
+          setFavoriteRoomIds(payload?.favoriteRoomIds || []);
+        }
+      } catch {
+        setRooms([]);
+        setFavoriteRoomIds([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const handleJoinPrivate = async (e) => {
     e.preventDefault();
@@ -40,6 +49,8 @@ const MyRooms = () => {
     try {
       setCodeError("");
       const res = await api.post("/rooms/join-private", { roomCode });
+      // invalidate cache
+      invalidateRoomsCache();
       navigate(`/room/${res.data.room._id}`);
     } catch (err) {
       setCodeError(err.response?.data?.message || "Invalid room code");
@@ -49,15 +60,16 @@ const MyRooms = () => {
   const handleLeave = async (roomId) => {
     try {
       await api.post(`/rooms/${roomId}/leave`);
-      setRooms((prev) => prev.filter((r) => r._id !== roomId));
-      setFavoriteRoomIds((prev) => prev.filter((id) => id !== roomId));
+      invalidateRoomsCache();
+      const payload = await fetchMyRooms(1, 20);
+      setRooms(payload?.rooms || []);
+      setFavoriteRoomIds(payload?.favoriteRoomIds || []);
     } catch {}
   };
 
   const handleToggleFavorite = async (roomId) => {
     try {
       setTogglingFavoriteId(roomId);
-
       const currentlyFavorite = favoriteRoomIds.includes(roomId);
       const nextFavorite = !currentlyFavorite;
 
@@ -67,14 +79,22 @@ const MyRooms = () => {
         return prev.filter((id) => id !== roomId);
       });
 
-      const res = await api.post(`/users/me/rooms/${roomId}/favorite`, {
-        favorite: nextFavorite,
-      });
-
-      setFavoriteRoomIds(res.data.favoriteRoomIds || []);
+      try {
+        const ids = await toggleFavorite(roomId, nextFavorite);
+        setFavoriteRoomIds(ids || []);
+      } catch (err) {
+        // rollback by refetching from source of truth
+        invalidateRoomsCache();
+        const payload = await fetchMyRooms(1, 20);
+        setRooms(payload?.rooms || []);
+        setFavoriteRoomIds(payload?.favoriteRoomIds || []);
+      }
     } catch {
       // rollback by refetching from source of truth
-      fetchMyRooms();
+      invalidateRoomsCache();
+      const payload = await fetchMyRooms(1, 20);
+      setRooms(payload?.rooms || []);
+      setFavoriteRoomIds(payload?.favoriteRoomIds || []);
     } finally {
       setTogglingFavoriteId("");
     }

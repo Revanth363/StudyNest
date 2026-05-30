@@ -7,10 +7,13 @@
 .profile-header {
   padding: 28px 32px 20px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .profile-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.4px;
   color: var(--text-primary);
@@ -23,17 +26,19 @@
 }
 
 .profile-body {
-  display: flex;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 28px;
   padding: 28px 32px;
   flex: 1;
   overflow-y: auto;
-  align-items: flex-start;
+  align-items: start;
 }
 
 .profile-left {
-  width: 340px;
-  min-width: 340px;
+  width: 360px;
+  min-width: 260px;
+  align-self: start;
 }
 
 .profile-right {
@@ -51,6 +56,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 22px;
+  box-shadow: 0 6px 20px rgba(7,12,17,0.06);
 }
 
 .avatar-section {
@@ -63,6 +69,14 @@
 .avatar-wrap {
   position: relative;
   flex-shrink: 0;
+}
+
+.avatar-wrap img {
+  width: 96px;
+  height: 96px;
+  border-radius: 20px;
+  object-fit: cover;
+  display: block;
 }
 
 .avatar-edit-btn {
@@ -109,7 +123,7 @@
 }
 
 .profile-username {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.3px;
@@ -262,7 +276,7 @@
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
 }
 
@@ -543,7 +557,7 @@
 
 @media (max-width: 900px) {
   .profile-body {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     padding: 20px;
   }
 
