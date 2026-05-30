@@ -1,6 +1,7 @@
 .room-page {
   display: flex;
   height: 100vh;
+  min-height: 100vh;
   overflow: hidden;
   background-color: var(--bg-primary);
 }
@@ -15,6 +16,7 @@
 
 .room-loading {
   height: 100vh;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -32,12 +34,29 @@
 
 @media (max-width: 768px) {
   .room-page {
-    height: 100dvh;
+    height: 100svh;
+    min-height: 100svh;
     background-color: var(--bg-primary);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .room-loading {
+    height: 100svh;
+    min-height: 100svh;
+  }
+
+  @supports (height: 100dvh) {
+    .room-page,
+    .room-loading {
+      height: 100svh;
+      min-height: 100svh;
+    }
   }
 
   .room-center {
     width: 100%;
+    min-height: 0;
     border-right: none;
   }
 

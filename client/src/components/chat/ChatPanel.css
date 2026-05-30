@@ -336,6 +336,29 @@
   font-size: 13px;
 }
 
+.chat-date-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 12px 0 4px;
+}
+
+.chat-date-separator span {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.older-loading {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
 .message-row {
   display: flex;
   align-items: flex-end;
@@ -451,7 +474,26 @@
 
 @media (max-width: 768px) {
   .chat-panel {
-    height: 100dvh;
+    height: 100svh;
+    min-height: 100svh;
+    overflow: hidden;
+  }
+
+  @supports (height: 100dvh) {
+    .chat-panel {
+      height: 100svh;
+      min-height: 100svh;
+    }
+  }
+
+  .chat-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    padding-top: env(safe-area-inset-top, 0px);
+    background: var(--bg-primary);
   }
 
   .chat-header-top {
@@ -512,7 +554,10 @@
   }
 
   .chat-messages {
-    padding: 14px 10px;
+    padding-top: calc(var(--mobile-header-h, 96px) + 10px);
+    padding-bottom: calc(var(--mobile-input-h, 76px) + 10px);
+    padding-left: 10px;
+    padding-right: 10px;
     gap: 8px;
   }
 
@@ -1110,13 +1155,16 @@
 /* Mobile input anchoring and compact styles */
 @media (max-width: 768px) {
   .message-input-wrapper {
-    position: sticky;
+    position: fixed;
+    left: 0;
+    right: 0;
     bottom: 0;
     padding: 8px 12px;
     border-top: 1px solid var(--border);
     background: linear-gradient(180deg, rgba(0,0,0,0), var(--bg-primary));
-    z-index: 60;
-    padding-bottom: calc(env(safe-area-inset-bottom, 12px) + 8px);
+    z-index: 90;
+    /* Avoid synthetic gap when browser UI (URL bar) changes viewport height */
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
   }
 
   .message-input-box {

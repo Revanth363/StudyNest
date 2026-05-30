@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useRooms } from "../../context/RoomsContext";
 import Avatar from "../shared/Avatar";
-import api from "../../services/api";
 import "./Sidebar.css";
 import { getLogoForTopic } from "../../utils/topicLogos";
 
@@ -177,28 +177,36 @@ const Sidebar = ({ activeView, setActiveView, onCreateRoom, activeRoomId }) => {
 const YourRoomsList = ({ setActiveView, activeRoomId, showAllRooms, setShowAllRooms, roomsSectionRef }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { fetchMyRooms, pagesCache } = useRooms();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchRooms = async () => {
+    let mounted = true;
+    const loadRooms = async () => {
       try {
-        setLoading(true);
-        const res = await api.get("/users/me/rooms");
-        if (res.data.success) {
-          setRooms(res.data.rooms);
+        const cached = pagesCache["1:20"];
+        if (cached?.rooms) {
+          setRooms(cached.rooms);
+          setLoading(false);
+          return;
         }
+
+        setLoading(true);
+        const payload = await fetchMyRooms(1, 20);
+        if (!mounted) return;
+        setRooms(payload?.rooms || []);
       } catch (error) {
+        if (!mounted) return;
         console.error("Failed to fetch rooms:", error);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    if (user?._id) {
-      fetchRooms();
-    }
-  }, [user?._id]);
+    if (user?._id) loadRooms();
+    return () => { mounted = false; };
+  }, [user?._id, fetchMyRooms, pagesCache]);
 
   const formatLastSeen = (timestamp) => {
     if (!timestamp) return "Recently";

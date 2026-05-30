@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import api from "../../services/api";
+import { useViewCache } from "../../context/ViewCacheContext";
 import Avatar from "../shared/Avatar";
 import FormattedContent from "../shared/FormattedContent";
 import "./SavedMessages.css";
@@ -8,8 +9,14 @@ const SavedMessages = () => {
   const [saved, setSaved] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const { savedMessagesCache, setSavedMessagesCache } = useViewCache();
 
   useEffect(() => {
+    if (savedMessagesCache) {
+      setSaved(savedMessagesCache);
+      setLoading(false);
+      return;
+    }
     fetchSaved();
   }, []);
 
@@ -17,7 +24,9 @@ const SavedMessages = () => {
     try {
       setLoading(true);
       const res = await api.get("/messages/saved");
-      setSaved(res.data.messages);
+      const messages = res.data.messages || [];
+      setSaved(messages);
+      setSavedMessagesCache(messages);
     } catch {
       setSaved([]);
     } finally {
@@ -28,7 +37,11 @@ const SavedMessages = () => {
   const handleUnsave = async (messageId) => {
     try {
       await api.delete(`/messages/${messageId}/save`);
-      setSaved((prev) => prev.filter((m) => m._id !== messageId));
+      setSaved((prev) => {
+        const next = prev.filter((m) => m._id !== messageId);
+        setSavedMessagesCache(next);
+        return next;
+      });
     } catch {}
   };
 

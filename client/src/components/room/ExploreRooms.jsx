@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { useRooms } from "../../context/RoomsContext";
+import { useViewCache } from "../../context/ViewCacheContext";
 import "./ExploreRooms.css";
 import { getLogoForTopic } from "../../utils/topicLogos";
 
@@ -18,9 +19,20 @@ const ExploreRooms = ({ onCreateRoom }) => {
   const [joining, setJoining] = useState(null);
   const navigate = useNavigate();
   const { invalidateRoomsCache } = useRooms();
+  const { exploreCache, setExploreCache } = useViewCache();
+
+  const cacheKey = `${activeTopic}|${search.trim().toLowerCase()}|${limit}`;
 
   useEffect(() => {
     setPage(1);
+    const cached = exploreCache[cacheKey];
+    if (cached) {
+      setRooms(cached.rooms || []);
+      setTotal(cached.total || 0);
+      setPage(cached.page || 1);
+      setLoading(false);
+      return;
+    }
     fetchRooms(1);
   }, [activeTopic, search]);
 
@@ -34,8 +46,27 @@ const ExploreRooms = ({ onCreateRoom }) => {
       const payload = res.data || {};
       if (pageToFetch === 1) {
         setRooms(payload.rooms || []);
+        setExploreCache((prev) => ({
+          ...prev,
+          [cacheKey]: {
+            rooms: payload.rooms || [],
+            total: payload.total || 0,
+            page: payload.page || pageToFetch,
+          },
+        }));
       } else {
-        setRooms((prev) => [...prev, ...(payload.rooms || [])]);
+        setRooms((prev) => {
+          const nextRooms = [...prev, ...(payload.rooms || [])];
+          setExploreCache((cachePrev) => ({
+            ...cachePrev,
+            [cacheKey]: {
+              rooms: nextRooms,
+              total: payload.total || 0,
+              page: payload.page || pageToFetch,
+            },
+          }));
+          return nextRooms;
+        });
       }
       setTotal(payload.total || 0);
       setPage(payload.page || pageToFetch);

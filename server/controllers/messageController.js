@@ -10,7 +10,8 @@ const { createNotifications } = require("../utils/notification.js");
 const getMessages = async (req, res, next) => {
   try {
     const { roomId } = req.params;
-    const { search } = req.query;
+    const { search, mode = "recent", before, limit: limitQuery } = req.query;
+    const limit = Math.min(parseInt(limitQuery || "50", 10), 200);
 
     let filter = { room: roomId, isDeleted: false };
 
@@ -18,11 +19,43 @@ const getMessages = async (req, res, next) => {
       filter.content = { $regex: search, $options: "i" };
     }
 
-    const messages = await Message.find(filter)
-      .populate("sender", "username avatar")
-      .sort({ createdAt: 1 });
+    // Initial load: only today + yesterday
+    if (mode === "recent") {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfYesterday = new Date(startOfToday);
+      startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+      filter.createdAt = { $gte: startOfYesterday };
+    }
 
-    res.status(200).json({ success: true, messages });
+    // Older pagination: load messages older than the current oldest timestamp
+    if (mode === "before" && before) {
+      const beforeDate = new Date(before);
+      if (!Number.isNaN(beforeDate.getTime())) {
+        filter.createdAt = { $lt: beforeDate };
+      }
+    }
+
+    // Query in descending order for efficient pagination, then reverse for chat rendering
+    const queried = await Message.find(filter)
+      .populate("sender", "username avatar")
+      .sort({ createdAt: -1 })
+      .limit(limit);
+
+    const messages = queried.reverse();
+
+    let hasMore = false;
+    if (messages.length > 0) {
+      const oldest = messages[0].createdAt;
+      const olderCount = await Message.countDocuments({
+        room: roomId,
+        isDeleted: false,
+        createdAt: { $lt: oldest },
+      });
+      hasMore = olderCount > 0;
+    }
+
+    res.status(200).json({ success: true, messages, hasMore });
   } catch (error) {
     next(error);
   }

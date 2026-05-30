@@ -19,6 +19,8 @@ const TABS = ["Chat", "Resources", "Pinned", "Info"];
 const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
@@ -27,9 +29,44 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [savedMessageIds, setSavedMessageIds] = useState([]);
   const [memberSearch, setMemberSearch] = useState("");
+  const [headerHeight, setHeaderHeight] = useState(96);
+  const [inputHeight, setInputHeight] = useState(76);
   const bottomRef = useRef(null);
+  const messagesRef = useRef(null);
+  const suppressNextAutoScrollRef = useRef(false);
+  const headerRef = useRef(null);
+  const inputWrapperRef = useRef(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const updateHeights = () => {
+      setHeaderHeight(headerRef.current?.offsetHeight || 96);
+      setInputHeight(inputWrapperRef.current?.offsetHeight || 76);
+    };
+
+    updateHeights();
+
+    let observers = [];
+    if (typeof ResizeObserver !== "undefined") {
+      if (headerRef.current) {
+        const headerObserver = new ResizeObserver(updateHeights);
+        headerObserver.observe(headerRef.current);
+        observers.push(headerObserver);
+      }
+      if (inputWrapperRef.current) {
+        const inputObserver = new ResizeObserver(updateHeights);
+        inputObserver.observe(inputWrapperRef.current);
+        observers.push(inputObserver);
+      }
+    }
+
+    window.addEventListener("resize", updateHeights);
+    return () => {
+      observers.forEach((obs) => obs.disconnect());
+      window.removeEventListener("resize", updateHeights);
+    };
+  }, []);
 
   useEffect(() => {
     fetchMessages();
@@ -99,8 +136,9 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
   const fetchMessages = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/messages/${room._id}`);
-      setMessages(res.data.messages);
+      const res = await api.get(`/messages/${room._id}`, { params: { mode: "recent", limit: 200 } });
+      setMessages(res.data.messages || []);
+      setHasMoreMessages(Boolean(res.data.hasMore));
       // ensure we land on the latest message after initial load
       setTimeout(() => {
         try { bottomRef.current?.scrollIntoView({ behavior: "auto" }); } catch (e) {}
@@ -112,7 +150,45 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
     }
   };
 
+  const loadOlderMessages = async () => {
+    if (loadingOlder || !hasMoreMessages || messages.length === 0) return;
+
+    try {
+      setLoadingOlder(true);
+      const listEl = messagesRef.current;
+      const prevScrollHeight = listEl?.scrollHeight || 0;
+      const oldestCreatedAt = messages[0]?.createdAt;
+      if (!oldestCreatedAt) return;
+
+      const res = await api.get(`/messages/${room._id}`, {
+        params: { mode: "before", before: oldestCreatedAt, limit: 60 },
+      });
+
+      const older = res.data.messages || [];
+      if (older.length > 0) {
+        suppressNextAutoScrollRef.current = true;
+        setMessages((prev) => [...older, ...prev]);
+        setHasMoreMessages(Boolean(res.data.hasMore));
+        requestAnimationFrame(() => {
+          if (!listEl) return;
+          const nextScrollHeight = listEl.scrollHeight;
+          listEl.scrollTop = nextScrollHeight - prevScrollHeight;
+        });
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch {
+      // ignore load more errors
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
   useEffect(() => {
+    if (suppressNextAutoScrollRef.current) {
+      suppressNextAutoScrollRef.current = false;
+      return;
+    }
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -222,8 +298,16 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
 
   return (
     <>
-      <div className="chat-panel" onClick={() => setOpenMessageMenuId(null)}>
+      <div
+        className="chat-panel"
+        onClick={() => setOpenMessageMenuId(null)}
+        style={{
+          "--mobile-header-h": `${headerHeight}px`,
+          "--mobile-input-h": `${inputHeight}px`,
+        }}
+      >
       <ChatHeader
+        headerRef={headerRef}
         room={room}
         showSearch={showSearch}
         search={search}
@@ -249,7 +333,16 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
         <>
           {pinnedMessage && <PinnedBar message={pinnedMessage} />}
 
-          <div className="chat-messages">
+          <div
+            className="chat-messages"
+            ref={messagesRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              if (el.scrollTop < 60) {
+                loadOlderMessages();
+              }
+            }}
+          >
             {loading ? (
               <div className="messages-loading">
                 {[1, 2, 3].map((i) => (
@@ -261,23 +354,35 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
                 <p>No messages yet. Start the conversation!</p>
               </div>
             ) : (
-              filteredMessages.map((message, index) => (
-                <MessageBubble
-                  key={message._id}
-                  message={message}
-                  prevMessage={filteredMessages[index - 1]}
-                  onDelete={handleDeleteMessage}
-                  onSave={handleSaveMessage}
-                  onUnsave={handleUnsaveMessage}
-                  roomAdmins={room.admins}
-                  roomCreatedById={room.createdBy?._id}
-                  setModalImage={setModalImage}
-                  openMessageMenuId={openMessageMenuId}
-                  setOpenMessageMenuId={setOpenMessageMenuId}
-                  isSaved={savedMessageIds.includes(message._id)}
-                />
-              ))
+              filteredMessages.map((message, index) => {
+                const prev = filteredMessages[index - 1];
+                const showDateHeader = !prev || !isSameDay(prev.createdAt, message.createdAt);
+                return (
+                  <div key={message._id}>
+                    {showDateHeader && (
+                      <div className="chat-date-separator">
+                        <span>{formatMessageDay(message.createdAt)}</span>
+                      </div>
+                    )}
+                    <MessageBubble
+                      message={message}
+                      prevMessage={prev}
+                      onDelete={handleDeleteMessage}
+                      onSave={handleSaveMessage}
+                      onUnsave={handleUnsaveMessage}
+                      roomAdmins={room.admins}
+                      roomCreatedById={room.createdBy?._id}
+                      setModalImage={setModalImage}
+                      openMessageMenuId={openMessageMenuId}
+                      setOpenMessageMenuId={setOpenMessageMenuId}
+                      isSaved={savedMessageIds.includes(message._id)}
+                    />
+                  </div>
+                );
+              })
             )}
+
+            {loadingOlder && <div className="older-loading">Loading older messages...</div>}
 
             {typingMembers?.length > 0 && (
               <TypingIndicator members={typingMembers} />
@@ -287,6 +392,7 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
           </div>
 
           <MessageInput
+            wrapperRef={inputWrapperRef}
             roomId={room._id}
             onNewMessage={(msg) => {
               setMessages((prev) => {
@@ -321,7 +427,22 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
   );
 };
 
-  const ChatHeader = ({ room, showSearch, search, setSearch, onToggleSearch, activeTab, setActiveTab, onLeaveRoom, onReportRoom, isMuted, onToggleMute, onBackToRooms }) => {
+const isSameDay = (a, b) => {
+  const d1 = new Date(a);
+  const d2 = new Date(b);
+  return d1.getFullYear() === d2.getFullYear()
+    && d1.getMonth() === d2.getMonth()
+    && d1.getDate() === d2.getDate();
+};
+
+const formatMessageDay = (dateValue) => {
+  const date = new Date(dateValue);
+  const monthDay = date.toLocaleDateString([], { month: "short", day: "numeric" });
+  const weekday = date.toLocaleDateString([], { weekday: "short" });
+  return `${monthDay}, ${weekday}`;
+};
+
+  const ChatHeader = ({ headerRef, room, showSearch, search, setSearch, onToggleSearch, activeTab, setActiveTab, onLeaveRoom, onReportRoom, isMuted, onToggleMute, onBackToRooms }) => {
   const roomLogo = getLogoForTopic(room.topic);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
     const [showMobileSheet, setShowMobileSheet] = useState(false);
@@ -381,7 +502,7 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
       };
 
   return (
-    <div className="chat-header">
+    <div className="chat-header" ref={headerRef}>
       <div className="chat-header-top">
         <div className="chat-header-left">
               <button className="chat-back-btn" onClick={handleBackClick} aria-label="Back to chat">
@@ -849,7 +970,7 @@ const ImageModal = ({ image, onClose }) => {
   );
 };
 
-const MessageInput = ({ roomId, onNewMessage }) => {
+const MessageInput = ({ roomId, onNewMessage, wrapperRef }) => {
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -986,7 +1107,7 @@ const MessageInput = ({ roomId, onNewMessage }) => {
   };
 
   return (
-    <div className="message-input-wrapper">
+    <div className="message-input-wrapper" ref={wrapperRef}>
       {filePreview && (
         <div className="file-preview-bar">
           {filePreview.type === "image" ? (

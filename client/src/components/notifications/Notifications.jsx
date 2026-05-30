@@ -2,14 +2,21 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { getSocket, onNotificationNew, offNotificationNew } from "../../socket/socket";
+import { useViewCache } from "../../context/ViewCacheContext";
 import "./Notifications.css";
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { notificationsCache, setNotificationsCache } = useViewCache();
 
   useEffect(() => {
+    if (notificationsCache) {
+      setNotifications(notificationsCache);
+      setLoading(false);
+      return;
+    }
     fetchNotifications();
   }, []);
 
@@ -32,7 +39,9 @@ const Notifications = () => {
     try {
       setLoading(true);
       const res = await api.get("/notifications");
-      setNotifications(res.data.notifications);
+      const list = res.data.notifications || [];
+      setNotifications(list);
+      setNotificationsCache(list);
     } catch {
       setNotifications([]);
     } finally {
@@ -44,7 +53,11 @@ const Notifications = () => {
     try {
       await api.put(`/notifications/${id}/read`);
       setNotifications((prev) =>
-        prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
+        {
+          const next = prev.map((n) => (n._id === id ? { ...n, isRead: true } : n));
+          setNotificationsCache(next);
+          return next;
+        }
       );
     } catch {}
   };
@@ -52,7 +65,11 @@ const Notifications = () => {
   const handleMarkAllRead = async () => {
     try {
       await api.put("/notifications/read-all");
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setNotifications((prev) => {
+        const next = prev.map((n) => ({ ...n, isRead: true }));
+        setNotificationsCache(next);
+        return next;
+      });
     } catch {}
   };
 

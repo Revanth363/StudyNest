@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useRooms } from "../context/RoomsContext";
 import Sidebar from "../components/sidebar/Sidebar";
 import ExploreRooms from "../components/room/ExploreRooms";
 import MyRooms from "../components/room/MyRooms";
@@ -8,7 +9,6 @@ import SavedMessages from "../components/saved/SavedMessages";
 import Notifications from "../components/notifications/Notifications";
 import UserProfile from "../components/profile/UserProfile";
 import CreateRoomModal from "../components/room/CreateRoomModal";
-import api from "../services/api";
 import { getLogoForTopic } from "../utils/topicLogos";
 import "./DashboardPage.css";
 
@@ -222,27 +222,37 @@ const SearchIcon = () => (
 
 const YourRoomsScreen = ({ onOpenRoom }) => {
   const { user } = useAuth();
+  const { fetchMyRooms, pagesCache } = useRooms();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    const fetchRooms = async () => {
+    let mounted = true;
+    const load = async () => {
       try {
+        const cached = pagesCache["1:20"];
+        if (cached?.rooms) {
+          setRooms(cached.rooms || []);
+          setLoading(false);
+          return;
+        }
+
         setLoading(true);
-        const res = await api.get("/users/me/rooms");
-        setRooms(res.data.rooms || []);
+        const payload = await fetchMyRooms(1, 20);
+        if (!mounted) return;
+        setRooms(payload?.rooms || []);
       } catch {
+        if (!mounted) return;
         setRooms([]);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    if (user?._id) {
-      fetchRooms();
-    }
-  }, [user?._id]);
+    if (user?._id) load();
+    return () => { mounted = false; };
+  }, [user?._id, fetchMyRooms, pagesCache]);
 
   const formatLastSeen = (timestamp) => {
     if (!timestamp) return "Recently";
