@@ -1,0 +1,1 @@
+FileWhat it doesauth.middleware.jsVerifies JWT, attaches user to reqerror.middleware.jsCatches all errors, sends clean responsesecurity.middleware.jsHelmet + rate limiting + NoSQL sanitizeupload.middleware.jsMulter for file uploads to memory
