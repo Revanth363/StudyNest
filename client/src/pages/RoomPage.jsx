@@ -69,7 +69,7 @@ const RoomPage = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !room) {
     return (
       <div className="room-loading">
         <div className="room-loading-spinner" />

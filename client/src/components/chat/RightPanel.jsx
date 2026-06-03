@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/api";
 import Avatar from "../shared/Avatar";
@@ -280,4 +280,4 @@ const FileIcon = ({ type }) => (
   </svg>
 );
 
-export default RightPanel;
+export default memo(RightPanel);

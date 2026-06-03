@@ -11,7 +11,7 @@ const getMessages = async (req, res, next) => {
   try {
     const { roomId } = req.params;
     const { search, mode = "recent", before, limit: limitQuery } = req.query;
-    const limit = Math.min(parseInt(limitQuery || "50", 10), 200);
+    const limit = Math.min(parseInt(limitQuery || "10", 10), 200);
 
     let filter = { room: roomId, isDeleted: false };
 
@@ -19,13 +19,12 @@ const getMessages = async (req, res, next) => {
       filter.content = { $regex: search, $options: "i" };
     }
 
-    // Initial load: only today + yesterday
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Initial load: fetch the latest 10 messages.
     if (mode === "recent") {
-      const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const startOfYesterday = new Date(startOfToday);
-      startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-      filter.createdAt = { $gte: startOfYesterday };
+      // No date cutoff; the descending sort + limit returns the newest messages.
     }
 
     // Older pagination: load messages older than the current oldest timestamp
@@ -51,6 +50,13 @@ const getMessages = async (req, res, next) => {
         room: roomId,
         isDeleted: false,
         createdAt: { $lt: oldest },
+      });
+      hasMore = olderCount > 0;
+    } else if (mode === "recent") {
+      const olderCount = await Message.countDocuments({
+        room: roomId,
+        isDeleted: false,
+        createdAt: { $lt: startOfToday },
       });
       hasMore = olderCount > 0;
     }

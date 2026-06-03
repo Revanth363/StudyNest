@@ -34,10 +34,18 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
   const bottomRef = useRef(null);
   const messagesRef = useRef(null);
   const suppressNextAutoScrollRef = useRef(false);
+  const shouldStickToBottomRef = useRef(true);
+  const pendingScrollToBottomRef = useRef(false);
+  const pendingScrollBehaviorRef = useRef("smooth");
   const headerRef = useRef(null);
   const inputWrapperRef = useRef(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  const scrollToBottom = (behavior = "smooth") => {
+    pendingScrollBehaviorRef.current = behavior;
+    pendingScrollToBottomRef.current = true;
+  };
 
   useEffect(() => {
     const updateHeights = () => {
@@ -67,6 +75,21 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
       window.removeEventListener("resize", updateHeights);
     };
   }, []);
+
+  useEffect(() => {
+    setSearch("");
+    setShowSearch(false);
+    setMemberSearch("");
+    setOpenMessageMenuId(null);
+    setModalImage(null);
+    setReportOpen(false);
+    setReportReason("");
+    setLoadingOlder(false);
+    setHasMoreMessages(false);
+    shouldStickToBottomRef.current = true;
+    pendingScrollToBottomRef.current = false;
+    suppressNextAutoScrollRef.current = false;
+  }, [room._id]);
 
   useEffect(() => {
     fetchMessages();
@@ -136,13 +159,11 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
   const fetchMessages = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/messages/${room._id}`, { params: { mode: "recent", limit: 200 } });
+      shouldStickToBottomRef.current = true;
+      const res = await api.get(`/messages/${room._id}`, { params: { mode: "recent", limit: 10 } });
       setMessages(res.data.messages || []);
       setHasMoreMessages(Boolean(res.data.hasMore));
-      // ensure we land on the latest message after initial load
-      setTimeout(() => {
-        try { bottomRef.current?.scrollIntoView({ behavior: "auto" }); } catch (e) {}
-      }, 40);
+      scrollToBottom("auto");
     } catch {
       setMessages([]);
     } finally {
@@ -161,7 +182,7 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
       if (!oldestCreatedAt) return;
 
       const res = await api.get(`/messages/${room._id}`, {
-        params: { mode: "before", before: oldestCreatedAt, limit: 60 },
+        params: { mode: "before", before: oldestCreatedAt, limit: 10 },
       });
 
       const older = res.data.messages || [];
@@ -189,7 +210,15 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
       suppressNextAutoScrollRef.current = false;
       return;
     }
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!pendingScrollToBottomRef.current) return;
+
+    pendingScrollToBottomRef.current = false;
+    const behavior = pendingScrollBehaviorRef.current || "smooth";
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+      });
+    });
   }, [messages]);
 
   useEffect(() => {
@@ -202,6 +231,12 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
         if (exists) return prev;
         return [...prev, message];
       });
+
+      const senderId = message.sender?._id?.toString?.() || message.sender?._id;
+      const currentUserId = user?._id?.toString?.();
+      if (senderId === currentUserId || shouldStickToBottomRef.current) {
+        scrollToBottom("smooth");
+      }
     };
 
     const handleMessageDeleted = ({ messageId }) => {
@@ -338,6 +373,8 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
             ref={messagesRef}
             onScroll={(e) => {
               const el = e.currentTarget;
+              const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+              shouldStickToBottomRef.current = distanceFromBottom < 120;
               if (el.scrollTop < 60) {
                 loadOlderMessages();
               }
@@ -351,7 +388,11 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
               </div>
             ) : filteredMessages.length === 0 ? (
               <div className="messages-empty">
-                <p>No messages yet. Start the conversation!</p>
+                <p>
+                  {hasMoreMessages
+                    ? "No messages from today. Scroll up to load earlier messages."
+                    : "No messages yet. Start the conversation!"}
+                </p>
               </div>
             ) : (
               filteredMessages.map((message, index) => {
@@ -400,6 +441,7 @@ const ChatPanel = ({ room, activeTab, setActiveTab, onRoomUpdate, onBackToRooms 
                 if (exists) return prev;
                 return [...prev, msg];
               });
+              scrollToBottom("smooth");
             }}
           />
         </>

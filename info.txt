@@ -1,1 +1,4 @@
-FileWhat it doesauth.middleware.jsVerifies JWT, attaches user to reqerror.middleware.jsCatches all errors, sends clean responsesecurity.middleware.jsHelmet + rate limiting + NoSQL sanitizeupload.middleware.jsMulter for file uploads to memory
+auth.middleware.js	Verifies JWT tokens, authenticates users, and attaches user 				information to the request object (req).
+error.middleware.js	Centralized error-handling middleware that catches application errors 			and returns consistent API responses.
+security.middleware.js	Enhances application security using Helmet, rate limiting, and NoSQL 			injection sanitization.
+upload.middleware.js	Handles file uploads using Multer with in-memory storage before 			processing or uploading to Cloudinary.
